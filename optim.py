@@ -9,7 +9,7 @@ class Parameter():
     pass
 
 param = Parameter()
-param.charge_rate = 10 # charge rate, kW
+param.charge_rate = 50 # charge rate, kW
 param.deltaT      = 0.25 # Time interval, in hour
 param.delta       = 0.88 # Healthy depth of discharge, dimentionless
 param.s0          = 0 # Initial SOC of battery, dimentionless
@@ -70,7 +70,7 @@ model.BatteryChargeConstraint = Constraint(
 def BatteryDischarge_Constraint( model, t ):
     return model.z_minus[t] <= param.charge_rate*param.deltaT*model.b[t]
 model.BatteryDischargeConstraint = Constraint(
-    model.T, rule = BatteryCharge_Constraint
+    model.T, rule = BatteryDischarge_Constraint
 )
 
 def BatteryLevelLower_Constraint( model, t ):
@@ -105,25 +105,27 @@ model.DemandImproveConstraint = Constraint(
 )
 
 def DemandLimitUpper_Constraint( model, t ):
-    return model.DL - model.demand[t] <= param.inf*model.b[t]
+    return model.DL - model.demand[t] <= param.inf*(1 - model.b[t])
 model.DemandLimitUpperConstraint = Constraint(
     model.T, rule = DemandLimitUpper_Constraint
 )
 
 def DemandLimitLower_Constraint( model, t ):
-    return model.DL - model.demand[t] >= -1*param.inf*(1 - model.b[t])
+    return model.DL - model.demand[t] >= -1*param.inf*model.b[t]
 model.DemandLimitLowerConstraint = Constraint(
     model.T, rule = DemandLimitLower_Constraint
 )
 
 def DemandImprovedUpper_Constraint( model, t ):
-    return model.y[t] - model.DL <= param.inf*(1 - model.b[t])
+    # return model.y[t] - model.DL <= param.inf*model.b[t]
+    return model.DL - model.y[t] <= param.inf*(1 - model.b[t])
 model.DemandImprovedUpperConstraint = Constraint(
     model.T, rule = DemandImprovedUpper_Constraint
 )
 
 def DemandImprovedLower_Constraint( model, t ):
-    return model.y[t] - model.DL >= -1*param.inf*model.b[t]
+    # return model.y[t] - model.DL >= -1*param.inf*(1 - model.b[t])
+    return model.DL - model.y[t] >= -1*param.inf*model.b[t]
 model.DemandImprovedLowerConstraint = Constraint(
     model.T, rule = DemandImprovedLower_Constraint
 )
@@ -142,16 +144,12 @@ def Objective_rule(model):
     return BatteryCost_rule(model) + Tariff_rule(model)
 model.TotalCost = Objective(rule=Objective_rule, sense=minimize)
 
-if __name__ == "__main__":
-    modeldata = DataPortal( model=model )
-    modeldata.load( filename='test.dat' )
-    instance = model.create_instance(modeldata)
-    solver = SolverFactory('cplex')
-    results = solver.solve(instance)
-    instance.solutions.load_from(results)
+def plot_instance(instance, xlimit=None):
     T  = list() # Time
     b  = list() # Binary variables
     z  = list() # Net battery energy exchange
+    z_plus = list()
+    z_minus = list()
     y  = list() # Improved load
     d  = list() # Original load
     s  = list() # SOC
@@ -160,13 +158,38 @@ if __name__ == "__main__":
         T.append(t)
         b.append( value(instance.b[t]) )
         z.append( value(instance.z[t]) )
+        z_plus.append( value(instance.z_plus[t]) )
+        z_minus.append( value(instance.z_minus[t]) )
         y.append( value(instance.y[t]) )
         d.append( value(instance.demand[t]) )
         s.append( value(instance.s[t]) )
         DL.append( instance.DL.value )
     plt.figure()
     plt.plot(T, d, '-k', T, y, '-b', T, DL, '-r')
+    plt.legend(['Demand', 'Improved demand', 'Demand limit'])
+    plt.xlabel('Time (15-min)')
+    plt.ylabel('Power (kW)')
+    if xlimit:
+        plt.xlim(xlimit)
     plt.figure()
-    plt.plot(T, z, '-g')
-    plt.plot(T, s, '-k')
+    plt.plot(T, z, '-g', T, s, '-k')
+    plt.legend(['Battery energy exchange', 'Battery energy level'])
+    plt.xlabel('Time (15-min)')
+    plt.ylabel('Energy (kWh)')
+    if xlimit:
+        plt.xlim(xlimit)
+    plt.figure()
+    plt.plot(T, b)
+    if xlimit:
+        plt.xlim(xlimit)
     plt.show()
+
+if __name__ == "__main__":
+    modeldata = DataPortal( model=model )
+    modeldata.load( filename='test.dat' )
+    instance = model.create_instance(modeldata)
+    solver = SolverFactory('cplex')
+    # solver.options['lpmethod'] = 2
+    results = solver.solve(instance)
+    instance.solutions.load_from(results)
+    plot_instance(instance, [1, 1000])
