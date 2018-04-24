@@ -3,19 +3,20 @@ from pyomo.environ import *
 from initialize import *
 from pyomo.opt import SolverFactory
 from matplotlib import pyplot as plt
+import pandas as pd
 from IPython import embed as IP
 
 class Parameter():
     pass
 
 param = Parameter()
-param.charge_rate = 50 # charge rate, kW
+param.c_rate      = 1 # Maximum C rate, h^(-1)
 param.deltaT      = 0.25 # Time interval, in hour
 param.delta       = 0.88 # Healthy depth of discharge, dimentionless
 param.s0          = 0 # Initial SOC of battery, dimentionless
 param.eta         = 0.80 # Round-trip efficiency of battery, dimentionless
 param.eta_I       = 0.95 # Inverter efficiency, dimentionless
-param.inf         = 1E9 # Infinity
+param.inf         = 1E6 # Infinity, be careful selecting the value
 param.C_I         = 2000 # Installation cost, USD
 param.C_C         = 200 # Battery capital cost, USD/kWh
 param.r           = 0.1 # Discount rate, dimentionless
@@ -29,11 +30,17 @@ def Battery_Constraint( model, t ):
     expr = (model.z[t] == model.z_plus[t] - model.z_minus[t])
     return expr
 
+def BatteryCharge_1_Constraint(model, t):
+    return model.z_plus[t] <= param.inf*(1 - model.b[t])
+
 def BatteryCharge_Constraint( model, t ):
-    return model.z_plus[t] <= param.charge_rate*param.deltaT*(1 - model.b[t])
+    return model.z_plus[t] <= param.c_rate*param.deltaT*model.x
+
+def BatteryDischarge_1_Constraint(model, t):
+    return model.z_minus[t] <= param.inf*model.b[t]
 
 def BatteryDischarge_Constraint( model, t ):
-    return model.z_minus[t] <= param.charge_rate*param.deltaT*model.b[t]
+    return model.z_minus[t] <= param.c_rate*param.deltaT*model.x
 
 def BatteryLevelLower_Constraint( model, t ):
     lb = max( 0.05, (1 - param.delta)/2 )
@@ -99,6 +106,21 @@ def plot_instance(instance, xlimit=None):
         d.append( value(instance.demand[t]) )
         s.append( value(instance.s[t]) )
         DL.append( instance.DL.value )
+
+    R = pd.DataFrame(
+        {
+            'Demand':        d,
+            'Improved':      y,
+            'z+':            z_plus,
+            'z-':            z_minus,
+            'z':             z,
+            'Storage level': s,
+            'b':             b,
+        },
+        index = T,
+    )
+    R.to_csv('result.csv')
+
     plt.figure()
     plt.plot(T, d, '-k', T, y, '-b', T, DL, '-r')
     plt.legend(['Demand', 'Improved demand', 'Demand limit'])
@@ -155,8 +177,14 @@ def build_model():
         model.PeakLoad_tart, rule = PeakLoad_Constraint
     )
     model.BatteryConstraint = Constraint( model.T, rule = Battery_Constraint)
+    model.BatteryCharge_1Constraint = Constraint(
+        model.T, rule = BatteryCharge_1_Constraint
+    )
     model.BatteryChargeConstraint = Constraint(
         model.T, rule = BatteryCharge_Constraint
+    )
+    model.BatteryDischarge_1Constraint = Constraint(
+        model.T, rule = BatteryDischarge_1_Constraint
     )
     model.BatteryDischargeConstraint = Constraint(
         model.T, rule = BatteryDischarge_Constraint
@@ -199,6 +227,7 @@ if __name__ == "__main__":
     instance = model.create_instance(modeldata)
     solver = SolverFactory('cplex')
     # solver.options['lpmethod'] = 2
+    # solver.options['mip tolerances integrality'] = 1e-15
     results = solver.solve(instance)
     instance.solutions.load_from(results)
     plot_instance(instance, [1, 1000])
