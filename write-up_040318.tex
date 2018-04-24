@@ -1,0 +1,140 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usepackage{float}
+\usepackage[top=1in, left=1in, right=1in, bottom=1in]{geometry}
+
+\setlength{\parindent}{0cm}
+
+\begin{document}
+
+\section{Parameters}
+
+\subsection{Time periods}
+Define a set of time periods $\textbf{T} = \{1, 2, \cdots T\}$ and the length of each time period is $\Delta t$ (hour).
+
+\subsection{Battery techno-economic parameters}
+
+Define the following techno-economic parameters of batteries.
+
+\begin{table}[H]
+	\centering
+	\caption{Techno-economic parameters of batteries.}
+	\label{my-label1}
+	\begin{tabular}{lll}
+		\hline
+		Notation & Notes                         & Units \\
+		\hline
+		$r_C$    & Charge rate                   & kW    \\
+		$\delta$ & Healthy depth of discharge    &       \\
+		$s_0$    & Battery initial energy level  & kWh   \\
+		$\eta$   & Battery round-trip efficiency &       \\
+		$\eta_I$ & Inverter efficiency           &       \\
+		$C^I$    & Installation cost             & \$    \\
+		$C^C$    & Battery capital cost          & \$/kW \\
+		$r$      & Discount rate                 &       \\
+		$l$      & Battery lifetime              & yrs   \\
+		\hline
+	\end{tabular}
+\end{table}
+
+\subsection{Demand}
+Define 15-min load in kW: $d_t,\forall t \in \textbf{T}$.
+
+\subsection{Tariffs}
+Assume $n_{DT}$ demand charge rates are included in an energy tariff. Define sets $\textbf{T}_j \subseteq \textbf{T}, \forall j \in \{1,2 \cdots n_{DT} \}$, where each $\textbf{T}_j$ represents one set of time periods associated with the $j$th demand rate.
+\begin{enumerate}
+	\item Energy charge rate $C^E_t$ (\$/kWh), $\forall t \in \textbf{T}$.
+	\item Demand charge rate $C^D_j$ (\$/kW), $\forall j = \{1,2 \cdots n_{DT} \}$.
+	\item One-time service charge $C^S$ (\$).
+\end{enumerate}
+
+\section{Decision variables}
+We define following decision variables in Table~\ref{my-label2}.
+
+\begin{table}[H]
+	\centering
+	\caption{Decision variables}
+	\label{my-label2}
+	\begin{tabular}{lll}
+		\hline
+		Variables                                                    & Units & Notes                                                         \\
+		\hline
+		$x\in \mathbb{R}_+$                                          & kWh   & Battery capacity                                              \\
+		$\overline{d}\in \mathbb{R}_+$                               & kW    & Demand limit                                                  \\
+		$y_t\in \mathbb{R}_+, \forall t \in \mathbf{T}$              & kW    & Improved demand                                               \\
+		$y^p_j\in \mathbb{R}_+, \forall j \in \{1, \cdots n_{DT} \}$ & kW    & Peak load during period $\mathbf{T}_j$                        \\
+		$z^+_t\in \mathbb{R}_+, \forall t \in \mathbf{T}$            & kWh   & Battery charge during period $t$                              \\
+		$z^-_t\in \mathbb{R}_+, \forall t \in \mathbf{T}$            & kWh   & Battery discharge during period $t$                           \\
+		$z_t\in \mathbb{R}, \forall t \in \mathbf{T}$                & kWh   & Net energy change of battery                                  \\
+		$s_t \in \mathbb{R}_+, \forall t \in \mathbf{T}$             & kWh   & Battery energy level at the END of period $t$                 \\
+		$b_t \in \{0, 1\}, \forall t \in \mathbf{T}$                 &       & Battery charge/discharge indicator, 0 - charge, 1 - discharge \\
+		\hline
+	\end{tabular}
+\end{table}
+
+\section{Constraints}
+
+\subsection{Load improvement}
+\begin{equation}
+y_t = d_t + \eta_I \sqrt{\eta} \cdot \frac{z_t}{\Delta t}
+\end{equation}
+
+\subsection{Peak load constraint}
+\begin{equation}
+y^p_j \ge y_t, \forall j=\{1, \cdots n_{DT} \}, \forall t \in \textbf{T}_j
+\end{equation}
+
+\subsection{Battery operation constraints}
+\begin{equation}
+z_t = z^+_t - z^-_t, \forall t \in \textbf{T}
+\end{equation}
+
+\subsubsection{Charge/discharge rate}
+\begin{eqnarray}
+z^+_t \le r_C \Delta t \cdot (1 - b_t), \forall t \in \textbf{T} \\
+z^-_t \le r_C \Delta t \cdot b_t, \forall t \in \textbf{T}
+\end{eqnarray}
+
+\subsubsection{Healthy depth of discharge}
+\begin{equation}
+\text{max} \{ 0.05, \frac{1-\delta}{2} \} \cdot x
+\le 
+s_t 
+\le 
+\left( 1 -  \frac{1-\delta}{2} \right) \cdot x,
+\forall t \in \textbf{T}
+\end{equation}
+
+\subsubsection{Energy level continuity}
+\begin{equation}
+s_t = s_{t-1} + z_t, \forall t \in \textbf{T}
+\end{equation}
+
+\subsection{Demand limit rule}
+This constraint indicates that the battery can only charge when load is lower than load limit $\overline{d}$, and can only discharge when load is greater than $\overline{d}$.
+\begin{eqnarray}
+-\inf \cdot b_t
+\le
+\overline{d} - d_t
+\le
+\inf \cdot (1-b_t) \\
+-\inf \cdot b_t
+\le
+\overline{d} - y_t
+\le
+\inf \cdot (1-b_t)
+\end{eqnarray}
+
+\section{Objective function}
+The objective function $f$ consists of two parts. The first part is monthly cost of battery ($f_1$), while the second part accounts for total tariff charge ($f_2$).
+
+\begin{eqnarray}
+\text{min:} & f & = f_1 + f_2 \\
+& f_1 & = \frac{C^I + C^C x}{12} \cdot \frac{r (1+r)^l}{(1+r)^l - 1} \\
+& f_2 & = C^S + \sum_{t \in \textbf{T}} C^E_t \cdot y_t + \sum_{j=1}^{n_{DT}} C^D_j \cdot y^p_j
+\end{eqnarray}
+
+\end{document}
