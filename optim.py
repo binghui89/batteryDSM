@@ -86,79 +86,30 @@ def Tariff_rule(model):
 def Objective_rule(model):
     return BatteryCost_rule(model) + Tariff_rule(model)
 
-def plot_instance(instance, xlimit=None):
-    T  = list() # Time
-    b  = list() # Binary variables
-    z  = list() # Net battery energy exchange
-    z_plus = list()
-    z_minus = list()
-    y  = list() # Improved load
-    d  = list() # Original load
-    s  = list() # SOC
-    DL = list()
-    for t in instance.T.iterkeys():
-        T.append(t)
-        b.append( value(instance.b[t]) )
-        z.append( value(instance.z[t]) )
-        z_plus.append( value(instance.z_plus[t]) )
-        z_minus.append( value(instance.z_minus[t]) )
-        y.append( value(instance.y[t]) )
-        d.append( value(instance.demand[t]) )
-        s.append( value(instance.s[t]) )
-        DL.append( instance.DL.value )
-
-    R = pd.DataFrame(
-        {
-            'Demand':        d,
-            'Improved':      y,
-            'z+':            z_plus,
-            'z-':            z_minus,
-            'z':             z,
-            'Storage level': s,
-            'b':             b,
-        },
-        index = T,
-    )
-    R.to_csv('result.csv')
-
-    plt.figure()
-    plt.plot(T, d, '-k', T, y, '-b', T, DL, '-r')
-    plt.legend(['Demand', 'Improved demand', 'Demand limit'])
-    plt.xlabel('Time (15-min)')
-    plt.ylabel('Power (kW)')
-    if xlimit:
-        plt.xlim(xlimit)
-    plt.figure()
-    plt.plot(T, z, '-g', T, s, '-k')
-    plt.legend(['Battery energy exchange', 'Battery energy level'])
-    plt.xlabel('Time (15-min)')
-    plt.ylabel('Energy (kWh)')
-    if xlimit:
-        plt.xlim(xlimit)
-    plt.figure()
-    plt.plot(T, b)
-    if xlimit:
-        plt.xlim(xlimit)
-    plt.show()
-
-def build_model():
+def build_model(df=None):
     model = AbstractModel()
 
-    # Sets
-    model.T     = Set( ordered = True ) # Time periods
-
     # Parameters
-    model.demand                  = Param( model.T )
-    model.tariff_energy           = Param( model.T )
-    model.tariff_demand_original  = Param( model.T )
-    model.tariff_service          = Param()
+    if df is None:
+        model.T                       = Set( ordered = True ) # Time periods
+        model.demand                  = Param( model.T )
+        model.tariff_energy           = Param( model.T )
+        model.tariff_demand_original  = Param( model.T ) # The original demand tariff indexed by T
+        model.tariff_service          = Param()
+    else:
+        model.T                       = Set( ordered = True, initialize=df.index) # Time periods
+        model.demand                  = Param( model.T, initialize=df['Demand (kW)'].to_dict() )
+        model.tariff_energy           = Param( model.T, initialize=df['Tariff (energy)'].to_dict() )
+        model.tariff_demand_original  = Param( model.T, initialize=df['Tariff (demand)'].to_dict() ) # The original demand tariff indexed by T
+        model.tariff_service          = Param( initialize=df['Tariff (service)'].iloc[0] )
 
     # Additional sets and parameters
     model.tar           = Set( initialize = Init_tar ) # Number of demand tariffs
     model.T_tar         = Set(
         model.tar, within = model.T, initialize = Init_T_tar
     ) # Tariff time periods
-    model.tariff_demand = Param( model.tar, initialize = Init_tariff_demand )
+    # The actual demand tariff input to the model
+    model.tariff_demand = Param( model.tar, initialize = Init_tariff_demand ) 
     model.PeakLoad_tart = Set( dimen = 2, initialize = PeakLoadIndices )
 
     # Decision variables
@@ -230,4 +181,3 @@ if __name__ == "__main__":
     # solver.options['mip tolerances integrality'] = 1e-15
     results = solver.solve(instance)
     instance.solutions.load_from(results)
-    plot_instance(instance, [1, 1000])
